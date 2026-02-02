@@ -123,4 +123,9 @@ class A1RoughCfgPPO( LeggedRobotCfgPPO ):
         run_name = ''
         experiment_name = 'rough_a1'
 
+        resume = False
+        save_interval = 100
+        load_run="/home/guo/STU/HIMLoco/legged_gym/logs/rough_a1/Jan31_11-29-00_"
+        
+
   

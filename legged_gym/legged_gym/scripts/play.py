@@ -54,11 +54,19 @@ def play(args, x_vel=1.0, y_vel=0.0, yaw_vel=0.0):
     env_cfg.domain_rand.randomize_payload_mass = False
     env_cfg.commands.heading_command = False
     # env_cfg.terrain.mesh_type = 'plane'
+    
+    env_cfg.env.episode_length_s = 120 # 2分钟
+    env_cfg.commands.resampling_time = 120 # 2分钟更新一次命令
+    
     # prepare environment
     env, _ = task_registry.make_env(name=args.task, args=args, env_cfg=env_cfg)
-    env.commands[:, 0] = x_vel
-    env.commands[:, 1] = y_vel
-    env.commands[:, 2] = yaw_vel
+
+    # 在 env 初始化之后添加
+    print("---------------------------------------------------------")
+    print("SIMULATION DOF ORDER (Network Output Order):")
+    for i, name in enumerate(env.dof_names):
+        print(f"Index {i}: {name}")
+    print("---------------------------------------------------------")
 
     obs = env.get_observations()
     # load policy
@@ -83,12 +91,23 @@ def play(args, x_vel=1.0, y_vel=0.0, yaw_vel=0.0):
     camera_direction = np.array(env_cfg.viewer.lookat) - np.array(env_cfg.viewer.pos)
     img_idx = 0
 
+    env.focus = False
+    env.commands[:, 0] = 1.0
+    env.commands[:, 1] = 0.0
+    env.commands[:, 2] = 0.0
+
     for i in range(10*int(env.max_episode_length)):
-    
+
         actions = policy(obs.detach())
-        env.commands[:, 0] = x_vel
-        env.commands[:, 1] = y_vel
-        env.commands[:, 2] = yaw_vel
+
+        # # 打印输入输出,用于验证模型转换
+        # if(not(i%100)):
+        #     print("Observations:",obs.detach()) 
+        #     print("Actions:",actions.detach())
+
+        # env.commands[:, 0] = x_vel
+        # env.commands[:, 1] = y_vel
+        # env.commands[:, 2] = yaw_vel
         obs, _, rews, dones, infos, _, _ = env.step(actions.detach())
 
         if RECORD_FRAMES:
