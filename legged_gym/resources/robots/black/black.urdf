@@ -250,17 +250,17 @@
     </visual>
     <collision>
       <origin
-        xyz="-0.0201027 0.0000051 0.0158238"
+        xyz="0 0 0"
         rpy="0 0 0" />
       <geometry>
-        <sphere radius="0.025"/> <!-- 正确做法 -->
+        <mesh
+          filename="meshes/FL_toe_link.STL" />
       </geometry>
     </collision>
   </link>
   <joint
     name="FL_toe_joint"
-    type="fixed"
-    dont_collapse="true">
+    type="fixed">
     <origin
       xyz="0.20239 -0.11657 0.00625"
       rpy="-1.5708 0 0" />
@@ -477,17 +477,17 @@
     </visual>
     <collision>
       <origin
-        xyz="-0.0201081 0.0000041 0.0158185"
+        xyz="0 0 0"
         rpy="0 0 0" />
       <geometry>
-        <sphere radius="0.025"/>
+        <mesh
+          filename="meshes/FR_toe_link.STL" />
       </geometry>
     </collision>
   </link>
   <joint
     name="FR_toe_joint"
-    type="fixed"
-    dont_collapse="true">
+    type="fixed">
     <origin
       xyz="0.20239 -0.11657 -0.00625"
       rpy="-1.5707963267949 0 0" />
@@ -704,17 +704,17 @@
     </visual>
     <collision>
       <origin
-        xyz="-0.0206230 -0.0000051 0.0151395"
+        xyz="0 0 0"
         rpy="0 0 0" />
       <geometry>
-        <sphere radius="0.025"/> <!-- 正确做法 -->
+        <mesh
+          filename="meshes/RL_toe_link.STL" />
       </geometry>
     </collision>
   </link>
   <joint
     name="RL_toe_joint"
-    type="fixed"
-    dont_collapse="true">
+    type="fixed">
     <origin
       xyz="0.206193700965846 -0.109702268884022 0.0149999978914274"
       rpy="-1.5707963267949 0 0" />
@@ -931,17 +931,17 @@
     </visual>
     <collision>
       <origin
-        xyz="-0.0206282  0.0000041  0.0151341"
+        xyz="0 0 0"
         rpy="0 0 0" />
       <geometry>
-        <sphere radius="0.025"/> <!-- 正确做法 -->
+        <mesh
+          filename="meshes/RR_toe_link.STL" />
       </geometry>
     </collision>
   </link>
   <joint
     name="RR_toe_joint"
-    type="fixed"
-    dont_collapse="true">
+    type="fixed">
     <origin
       xyz="0.206199132036297 -0.10969647101958 -0.0149999972193771"
       rpy="-1.5707963267949 0 0" />

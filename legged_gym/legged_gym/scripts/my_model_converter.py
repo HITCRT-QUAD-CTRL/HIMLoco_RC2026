@@ -1,0 +1,165 @@
+import os
+import copy
+import torch
+import onnxruntime as ort
+import numpy as np
+from rsl_rl.modules import HIMActorCritic
+
+
+
+export_path = "/home/guo/STU/HIMLoco/legged_gym/logs/rough_black/exported/"
+model_path = "/home/guo/STU/HIMLoco/legged_gym/logs/rough_black/Feb01_19-19-49_/model_5000.pt"
+jit_path = os.path.join(export_path,'jit_model.pt')
+onnx_path = os.path.join(export_path,"onnx_model.onnx")
+
+num_actor_obs = 45*6
+num_critic_obs = 45 + 3 + 3 + 187
+num_one_step_obs = 45
+num_actions = 12
+
+EXPORT = True    
+TEST = True
+
+
+# 历史输入输出 测试数据 不同模型不同
+obs_history=torch.tensor([[ 2.0000e+00,  0.0000e+00,  0.0000e+00, -4.0831e-02,  1.0294e-01,
+         -4.2423e-02,  9.6157e-02, -3.2210e-02, -9.9485e-01, -2.4441e-01,
+          4.2184e-01, -7.5420e-01, -8.2739e-02, -6.2131e-01, -4.4538e-01,
+         -3.8000e-01, -3.8042e-01, -6.4032e-01, -3.5732e-01,  3.9071e-01,
+         -7.6343e-01,  9.4887e-02, -1.0663e-01, -2.8247e-01, -3.2638e-02,
+          2.4853e-01, -2.8159e-01, -8.3122e-02,  2.2992e-01,  3.2705e-01,
+         -3.8108e-03,  1.7818e-01,  2.5665e-02, -1.8179e+00,  1.2931e+00,
+         -3.3595e+00, -1.2313e+00, -1.8257e+00, -8.7172e-01, -3.3970e+00,
+         -9.4797e-01, -2.0013e+00, -2.7350e+00,  1.5246e+00, -2.6195e+00,
+          2.0000e+00,  0.0000e+00,  0.0000e+00,  6.1933e-02,  4.4324e-02,
+          1.4395e-02,  8.8507e-02, -3.0008e-02, -9.9562e-01, -2.7379e-01,
+          4.2684e-01, -6.9395e-01, -4.8100e-02, -6.8652e-01, -5.1162e-01,
+         -3.5527e-01, -4.2674e-01, -7.7714e-01, -3.5887e-01,  3.2196e-01,
+         -7.7910e-01, -1.1871e-02,  1.7327e-01,  3.5405e-02, -1.3574e-01,
+          7.6004e-02,  2.8256e-01, -2.3829e-02, -5.2484e-02,  2.3308e-01,
+          6.4902e-03,  1.8873e-01,  3.0680e-02, -2.0641e+00,  1.2698e+00,
+         -2.6491e+00, -8.7901e-01, -2.4602e+00, -1.3016e+00, -2.9393e+00,
+         -1.6693e+00, -2.5749e+00, -2.8607e+00,  1.7334e+00, -2.3129e+00,
+          2.0000e+00,  0.0000e+00,  0.0000e+00,  8.4457e-02,  5.4817e-02,
+          1.8824e-02,  8.4943e-02, -2.3042e-02, -9.9612e-01, -2.6940e-01,
+          3.6870e-01, -7.2070e-01, -9.8261e-03, -6.8264e-01, -6.4567e-01,
+         -3.5348e-01, -3.7524e-01, -8.7678e-01, -3.6436e-01,  2.4578e-01,
+         -7.8911e-01, -1.5763e-02,  1.6867e-01,  3.2082e-02, -4.0973e-02,
+         -1.0683e-01,  4.1495e-01,  2.6195e-02, -2.3326e-01,  3.2349e-01,
+          1.6953e-02,  1.8083e-01,  3.0631e-02, -2.3600e+00,  1.1974e+00,
+         -2.2178e+00, -4.3209e-01, -2.7674e+00, -2.0242e+00, -2.6601e+00,
+         -1.8009e+00, -3.1115e+00, -2.9750e+00,  1.7037e+00, -1.9328e+00,
+          2.0000e+00,  0.0000e+00,  0.0000e+00,  4.0483e-02,  4.8035e-02,
+          3.7405e-03,  8.0706e-02, -1.6508e-02, -9.9660e-01, -2.6407e-01,
+          3.0426e-01, -7.3771e-01,  4.8169e-03, -6.3706e-01, -7.4730e-01,
+         -3.5191e-01, -2.7343e-01, -9.4369e-01, -3.7127e-01,  1.6678e-01,
+         -7.9150e-01, -8.0853e-03,  1.9565e-01, -1.1763e-03, -2.9809e-02,
+         -1.5638e-01,  2.1486e-01, -9.7196e-03, -3.4729e-01,  1.1366e-01,
+          1.0159e-02,  2.0273e-01, -7.0726e-03, -2.4829e+00,  1.1024e+00,
+         -2.1571e+00,  8.5142e-03, -2.7847e+00, -2.4794e+00, -2.5402e+00,
+         -1.6030e+00, -3.5083e+00, -3.0299e+00,  1.5336e+00, -1.5756e+00,
+          2.0000e+00,  0.0000e+00,  0.0000e+00,  1.3040e-02,  4.3455e-02,
+          7.1231e-03,  7.6387e-02, -1.4099e-02, -9.9698e-01, -2.6139e-01,
+          2.3077e-01, -7.4001e-01,  3.1521e-03, -5.6288e-01, -8.4183e-01,
+         -3.5186e-01, -1.1892e-01, -9.9071e-01, -3.7451e-01,  8.2967e-02,
+         -7.8214e-01, -7.1413e-03,  2.1512e-01, -3.7301e-02,  4.5817e-02,
+         -2.2835e-01,  3.0683e-01,  3.0269e-02, -4.4712e-01,  1.7639e-01,
+          2.5942e-03,  2.2276e-01, -5.0737e-02, -2.4207e+00,  9.4203e-01,
+         -2.2350e+00,  2.3239e-01, -2.6267e+00, -3.0462e+00, -2.5415e+00,
+         -1.2657e+00, -3.9107e+00, -3.1096e+00,  1.2853e+00, -1.3270e+00,
+          2.0000e+00,  0.0000e+00,  0.0000e+00,  8.8529e-03,  2.0549e-02,
+         -8.9075e-03,  7.5382e-02, -1.4673e-02, -9.9705e-01, -2.6167e-01,
+          1.4634e-01, -7.3148e-01,  1.0726e-03, -4.7798e-01, -8.8416e-01,
+         -3.4733e-01,  4.5318e-02, -9.8426e-01, -3.7398e-01, -1.1828e-02,
+         -7.5515e-01, -2.9308e-03,  2.3267e-01, -5.9344e-02,  7.4382e-03,
+         -3.0427e-01,  7.8092e-02,  7.2065e-03, -5.6492e-01, -7.7341e-02,
+         -9.9909e-04,  2.3875e-01, -8.7944e-02, -2.2792e+00,  7.7642e-01,
+         -2.2877e+00,  2.6087e-01, -2.3072e+00, -3.4472e+00, -2.5659e+00,
+         -5.7448e-01, -4.1601e+00, -3.1737e+00,  1.1013e+00, -1.2255e+00]],
+       device='cpu')
+actions_history = torch.tensor([[-1.7344,  0.7826, -4.0544, -1.3106, -0.9148, -1.2623, -3.6823, -0.1899,
+         -1.4329, -2.7007,  1.3327, -3.1425]], device='cpu')
+
+
+
+class PolicyExporter(torch.nn.Module):
+    def __init__(self, actor_critic):
+        super().__init__()
+        self.actor = copy.deepcopy(actor_critic.actor)
+        self.estimator = copy.deepcopy(actor_critic.estimator)
+        # self.encoder = copy.deepcopy(actor_critic.estimator.encoder)
+        self.num_one_step_obs = actor_critic.num_one_step_obs
+        
+    def forward(self, obs_history):
+        vel, latent = self.estimator(obs_history)
+        action = self.actor(torch.cat((obs_history[:,0:self.num_one_step_obs], vel, latent), dim=1))
+        return action
+    
+    def export(self, path):
+        self.to('cpu')
+        traced_script_module = torch.jit.script(self)
+        # dummy_input = torch.zeros(1, num_actor_obs)
+        # traced_script_module = torch.jit.trace(self, dummy_input)
+        traced_script_module.save(path)
+    
+
+def export():
+    # 1. 实例化模型
+    model = HIMActorCritic(num_actor_obs=num_actor_obs,
+                        num_critic_obs=num_critic_obs,
+                        num_one_step_obs=num_one_step_obs,
+                        num_actions=num_actions)
+
+    # 加载权重
+    checkpoint = torch.load(model_path, map_location='cpu') 
+    model.load_state_dict(checkpoint['model_state_dict'])
+    model.eval()
+
+    # 导出为 JIT 模型
+    exporter = PolicyExporter(model)
+    exporter.eval()
+    exporter.export(jit_path)
+
+    # 导出onnx
+    dummy_input = torch.zeros(1, num_actor_obs)
+    torch.onnx.export(
+        exporter, 
+        dummy_input,
+        onnx_path,
+        input_names=["obs_history"],
+        output_names=["action"],
+        opset_version=12,
+        do_constant_folding=True,
+        dynamic_axes={
+            "obs_history": {0: "batch"},
+            "action": {0: "batch"}
+        }
+    )
+
+def test():
+    print("Action History:",actions_history)
+
+    # 测试jit
+    loaded_jit_model = torch.jit.load(jit_path)
+    loaded_jit_model.eval()
+    jit_output = loaded_jit_model(obs_history)
+    print("JIT model output:", jit_output)
+
+    # 测试onnx
+    sess = ort.InferenceSession(onnx_path)
+    input_name = sess.get_inputs()[0].name
+    onnx_input = obs_history.numpy()
+    onnx_output = sess.run(None, {input_name: onnx_input})[0]
+    onnx_output = torch.from_numpy(onnx_output)
+    print("ONNX output:", onnx_output)
+
+
+    print("导出结果")
+    print("PyTorch → JIT:", torch.allclose(actions_history, jit_output, atol=1e-4))
+    print("JIT → ONNX:", torch.allclose(jit_output, onnx_output, atol=1e-4))
+
+if __name__ == '__main__':
+    if EXPORT:
+        export()
+    if TEST:
+        test()

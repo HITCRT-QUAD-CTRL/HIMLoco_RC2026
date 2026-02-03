@@ -149,9 +149,9 @@ class BlackRoughCfgPPO( LeggedRobotCfgPPO ):
         experiment_name = 'rough_black'
 
         resume = False
-        load_run =  '/home/guo/STU/HIMLoco/legged_gym/logs/rough_black/Feb01_19-19-49_' 
+        load_run =  '/home/guo/STU/HIMLoco/legged_gym/logs/rough_black/Feb02_22-39-15_' 
         checkpoint = -1 # -1 = last saved model
         save_interval = 200 # check for potential saves every this many iterations
-        max_iterations = 5000
+        max_iterations = 10000
 
 
