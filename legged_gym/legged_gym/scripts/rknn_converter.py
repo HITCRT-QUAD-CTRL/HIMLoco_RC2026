@@ -74,7 +74,7 @@ if __name__ == '__main__':
     # 设置模型转换参数，这里可以指定平台，添加target_platform='rk3588'配置，默认rk3566
     # mean_values是设置输入的均值，std_values是输入的归一化值
     print('--> Config model')
-    rknn.config(mean_values=[[0]*270], std_values=[[1]*270], target_platform='rk3588')
+    rknn.config(target_platform='rk3588')
     print('done')
 
     # 导入onnx模型，使用model指定onnx模型路径
@@ -87,7 +87,7 @@ if __name__ == '__main__':
 
     # 构建RKNN模型，这里设置do_quantization为true开启量化，dataset是指定用于量化校正的数据集
     print('--> Building model')
-    ret = rknn.build(do_quantization=False, dataset=None)
+    ret = rknn.build(do_quantization=True, dataset=None)
     if ret != 0:
         print('Build model failed!')
         exit(ret)

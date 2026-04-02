@@ -6,6 +6,8 @@ import argparse
 from collections import deque
 from scipy.spatial.transform import Rotation as R
 from legged_gym import LEGGED_GYM_ROOT_DIR
+import pygame
+
 
 # from legged_gym.envs.go1.go1_config import BlackRoughCfg
 from legged_gym.envs.black.black_config import BlackRoughCfg
@@ -27,9 +29,59 @@ for i in range(len(asset_dof_names)):
     default_dof_pos[i] = BlackRoughCfg.init_state.default_joint_angles[asset_dof_names[i]]
 
 class cmd:
-    vx = 0.0
+    vx = 1.0
     vy = 0.0
     dyaw = 0.0
+
+# 手柄控制相关变量
+joystick = None
+pygame_initialized = False
+
+def init_joystick():
+    """初始化pygame和手柄"""
+    global joystick, pygame_initialized
+    if not pygame_initialized:
+        pygame.init()
+        pygame_initialized = True
+        pygame.joystick.init()
+        
+        # 检查是否有手柄连接
+        if pygame.joystick.get_count() > 0:
+            joystick = pygame.joystick.Joystick(0)
+            joystick.init()
+            print(f"检测到手柄: {joystick.get_name()}")
+            print(f"轴数量: {joystick.get_numaxes()}")
+            print(f"按钮数量: {joystick.get_numbuttons()}")
+        else:
+            print("未检测到手柄，将使用默认命令")
+
+def update_cmd_from_joystick():
+    """从手柄读取数据并更新命令
+    
+    手柄与速度映射:
+    lin_x = -ly
+    lin_y = -lx
+    ang_yaw = -rx
+    """
+    global joystick
+    if joystick is None:
+        return
+    
+    # 处理pygame事件
+    for event in pygame.event.get():
+        pass  # 处理事件队列
+    
+    # 读取手柄轴数据
+    # 假设: 轴0是左摇杆X(lx), 轴1是左摇杆Y(ly), 轴3是右摇杆X(rx)
+    # 不同手柄可能有不同的轴映射，需要根据实际情况调整
+    lx = joystick.get_axis(0)
+    ly = joystick.get_axis(1)
+    rx = joystick.get_axis(2)  # 右摇杆X轴
+    
+    # 应用手柄到速度的映射
+    cmd.vx = -ly
+    cmd.vy = -lx
+    cmd.dyaw = -rx
 
 def low_pass_action_filter(actions, last_actions):
   alpha = 0.2
@@ -64,6 +116,9 @@ def pd_control(target_q, q, kp, target_dq, dq, kd):
 
 def run_mujoco(policy, cfg):
     global default_dof_pos
+    # 初始化手柄
+    init_joystick()
+    
     model = mujoco.MjModel.from_xml_path(cfg.mjsim_config.mujoco_model_path) # 载入初始化位置由XML决定
     model.opt.timestep = cfg.mjsim_config.dt
     data = mujoco.MjData(model)
@@ -92,9 +147,8 @@ def run_mujoco(policy, cfg):
             if count_lowlevel % cfg.mjsim_config.decimation == 0:
                 obs = np.zeros([1, cfg.env.num_one_step_observations], dtype=np.double) # 1,45
                 # ---- set command ------
-                cmd.vx = 1.0
-                cmd.vy = 0.0
-                cmd.dyaw = 0.0
+                # 从手柄读取命令
+                update_cmd_from_joystick()
                 # ---- set command ------
                 
                 # current_obs = torch.cat((self.commands[:, :3] * self.commands_scale,
@@ -121,8 +175,8 @@ def run_mujoco(policy, cfg):
                 hist_obs_deque.append(obs)
                 hist_obs_deque.popleft()
                 
-                if(count_lowlevel%1000==0):
-                    print(obs)
+                # if(count_lowlevel%1000==0):
+                #     print(obs)
 
                 #-------缓存历史观测作为模型输入---
                 for i in range(6):#缓存历史观测
@@ -140,9 +194,9 @@ def run_mujoco(policy, cfg):
                 last_action = action
                 # last_action = action_flt
 
-                for a in action:
-                    if(a>10):
-                        print(action)
+                # for a in action:
+                #     if(a>10):
+                #         print(action)
 
                 #-------计算前馈力矩-------------
                 actions_scaled = last_action * cfg.control.action_scale
@@ -202,7 +256,7 @@ if __name__ == '__main__':
             if args.terrain:
                 # mujoco_model_path = f'{LEGGED_GYM_ROOT_DIR}/resources/robots/go1/xml/world_terrain.xml'
                 # mujoco_model_path = f'{LEGGED_GYM_ROOT_DIR}/resources/robots/go1/xml/world_stairs.xml'
-                mujoco_model_path = f'{LEGGED_GYM_ROOT_DIR}/resources/robots/black/scene.xml'
+                mujoco_model_path = f'{LEGGED_GYM_ROOT_DIR}/resources/robots/black/black.xml'
             else:
                 mujoco_model_path = f'{LEGGED_GYM_ROOT_DIR}/resources/robots/go1/xml/world.xml'
             sim_duration = 600.0
@@ -212,7 +266,7 @@ if __name__ == '__main__':
         class robot_config:
             # kp_all = BlackRoughCfg.control.stiffness['joint'] 
             # kd_all = BlackRoughCfg.control.damping['joint'] 
-            kp_all = 40 
+            kp_all = 50 
             kd_all = 1
             
             kps = np.array([kp_all, kp_all, kp_all, kp_all, kp_all, kp_all, kp_all, kp_all, kp_all, kp_all, kp_all, kp_all], dtype=np.double)

@@ -55,6 +55,8 @@ def play(args, x_vel=1.0, y_vel=0.0, yaw_vel=0.0):
     env_cfg.commands.heading_command = False
     # env_cfg.terrain.mesh_type = 'plane'
     
+    env_cfg.terrain.terrain_proportions = [0.0, 0.3, 0.3, 0.3, 0.1 ,0.0, 0.0, 0.0]
+
     env_cfg.env.episode_length_s = 120 # 2分钟
     env_cfg.commands.resampling_time = 120 # 2分钟更新一次命令
     

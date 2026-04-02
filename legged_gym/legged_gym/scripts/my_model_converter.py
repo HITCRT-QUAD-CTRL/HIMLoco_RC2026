@@ -6,9 +6,8 @@ import numpy as np
 from rsl_rl.modules import HIMActorCritic
 
 
-
 export_path = "/home/guo/STU/HIMLoco/legged_gym/logs/rough_black/exported/"
-model_path = "/home/guo/STU/HIMLoco/legged_gym/logs/rough_black/Feb01_19-19-49_/model_5000.pt"
+model_path = "/home/guo/STU/HIMLoco/policies/model_10000.pt"
 jit_path = os.path.join(export_path,'jit_model.pt')
 onnx_path = os.path.join(export_path,"onnx_model.onnx")
 
@@ -82,26 +81,49 @@ actions_history = torch.tensor([[-1.7344,  0.7826, -4.0544, -1.3106, -0.9148, -1
 
 
 
+# class PolicyExporter(torch.nn.Module):
+#     def __init__(self, actor_critic):
+#         super().__init__()
+#         self.actor = copy.deepcopy(actor_critic.actor)
+#         self.estimator = copy.deepcopy(actor_critic.estimator)
+#         # self.encoder = copy.deepcopy(actor_critic.estimator.encoder)
+#         self.num_one_step_obs = actor_critic.num_one_step_obs
+        
+#     def forward(self, obs_history):
+#         vel, latent = self.estimator(obs_history)
+#         action = self.actor(torch.cat((obs_history[:,0:self.num_one_step_obs], vel, latent), dim=1))
+#         return action
+    
+#     def export(self, path):
+#         self.to('cpu')
+#         traced_script_module = torch.jit.script(self)
+#         # dummy_input = torch.zeros(1, num_actor_obs)
+#         # traced_script_module = torch.jit.trace(self, dummy_input)
+#         traced_script_module.save(path)
+    
 class PolicyExporter(torch.nn.Module):
     def __init__(self, actor_critic):
         super().__init__()
         self.actor = copy.deepcopy(actor_critic.actor)
-        self.estimator = copy.deepcopy(actor_critic.estimator)
-        # self.encoder = copy.deepcopy(actor_critic.estimator.encoder)
-        self.num_one_step_obs = actor_critic.num_one_step_obs
-        
+        self.estimator = copy.deepcopy(actor_critic.estimator.encoder)
+
     def forward(self, obs_history):
-        vel, latent = self.estimator(obs_history)
-        action = self.actor(torch.cat((obs_history[:,0:self.num_one_step_obs], vel, latent), dim=1))
-        return action
-    
+        parts = self.estimator(obs_history)[:, 0:19]
+        vel, z = parts[..., :3], parts[..., 3:]
+        z = torch.nn.functional.normalize(z, dim=-1, p=2.0)
+        return self.actor(torch.cat((obs_history[:, 0:45], vel, z), dim=1))
+
     def export(self, path):
         self.to('cpu')
-        traced_script_module = torch.jit.script(self)
-        # dummy_input = torch.zeros(1, num_actor_obs)
-        # traced_script_module = torch.jit.trace(self, dummy_input)
-        traced_script_module.save(path)
-    
+        # traced_script_module = torch.jit.script(self)
+        # traced_script_module.save(path)
+        # --- 关键修改 1: 使用 trace 锁定形状 ---
+        # 传入一个全 0 样本，让 PyTorch 记录下确定的计算流
+        dummy_input = torch.zeros(1, 270)
+        traced_model = torch.jit.trace(self, dummy_input)
+        traced_model.save(path)
+        return traced_model # 返回 traced 模型用于 ONNX 导出
+
 
 def export():
     # 1. 实例化模型
@@ -118,22 +140,18 @@ def export():
     # 导出为 JIT 模型
     exporter = PolicyExporter(model)
     exporter.eval()
-    exporter.export(jit_path)
+    traced_model = exporter.export(jit_path)
 
     # 导出onnx
     dummy_input = torch.zeros(1, num_actor_obs)
     torch.onnx.export(
-        exporter, 
+        traced_model, 
         dummy_input,
         onnx_path,
         input_names=["obs_history"],
         output_names=["action"],
         opset_version=12,
         do_constant_folding=True,
-        dynamic_axes={
-            "obs_history": {0: "batch"},
-            "action": {0: "batch"}
-        }
     )
 
 def test():

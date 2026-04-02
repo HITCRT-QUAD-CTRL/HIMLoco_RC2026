@@ -76,7 +76,7 @@ class BlackRoughCfg( LeggedRobotCfg ):
 
     class commands( LeggedRobotCfg.commands ):
         curriculum = True
-        max_curriculum = 1.5
+        max_curriculum = 2
         num_commands = 4 # default: lin_vel_x, lin_vel_y, ang_vel_yaw, heading (in heading mode ang_vel_yaw is recomputed from heading error)
         resampling_time = 10. # time before command are changed[s]
         heading_command = True # if true: compute ang vel command from heading error
@@ -99,10 +99,8 @@ class BlackRoughCfg( LeggedRobotCfg ):
         collapse_fixed_joints = True
 
     # class domain_rand( LeggedRobotCfg.domain_rand):
-    #     delay = False # 原版delay
-        
-    #     randomize_lag_timesteps = True
-    #     lag_timesteps = 6
+    #     randomize_restitution = True # TODO 添加弹性恢复系数域随机
+    #     restitution_range = [0., 0.2]
     
     class rewards( LeggedRobotCfg.rewards ):
         class scales:
@@ -116,16 +114,16 @@ class BlackRoughCfg( LeggedRobotCfg ):
             dof_acc = -2.5e-7
             joint_power = -2e-5
             base_height = -1.0
-            foot_clearance = -0.01
+            foot_clearance = -0.0
             action_rate = -0.01
             smoothness = -0.01
             feet_air_time =  0.0
-            collision = -0.0
-            feet_stumble = -0.0
-            stand_still = -0.
+            collision = -0.01
+            feet_stumble = -0.0       
+            stand_still = -0.0
             torques = -0.0
             dof_vel = -0.0
-            dof_pos_limits = -0.0
+            dof_pos_limits = -0.0 # TODO 惩罚超限
             dof_vel_limits = -0.0
             torque_limits = -0.0
 
@@ -135,11 +133,11 @@ class BlackRoughCfg( LeggedRobotCfg ):
         only_positive_rewards = False # if true negative total rewards are clipped at zero (avoids early termination problems)
         tracking_sigma = 0.25 # tracking reward = exp(-error^2/sigma)
         soft_dof_pos_limit = 1. # percentage of urdf limits, values above this limit are penalized TODO
-        soft_dof_vel_limit = 1.
-        soft_torque_limit = 1.
-        base_height_target = 0.30 #0.32
+        soft_dof_vel_limit = 0.99
+        soft_torque_limit = 0.99
+        base_height_target = 0.32 #0.32
         max_contact_force = 100. # forces above this value are penalized
-        clearance_height_target = -0.2
+        clearance_height_target = -0.20
 
 class BlackRoughCfgPPO( LeggedRobotCfgPPO ):
     class algorithm( LeggedRobotCfgPPO.algorithm ):
@@ -149,9 +147,13 @@ class BlackRoughCfgPPO( LeggedRobotCfgPPO ):
         experiment_name = 'rough_black'
 
         resume = False
-        load_run =  '/home/guo/STU/HIMLoco/legged_gym/logs/rough_black/Feb02_22-39-15_' 
+        load_run =  '/home/guo/STU/HIMLoco/legged_gym/logs/rough_black/Feb01_19-19-49_' 
         checkpoint = -1 # -1 = last saved model
         save_interval = 200 # check for potential saves every this many iterations
-        max_iterations = 10000
+        max_iterations = 7000
 
 
+
+# /home/guo/STU/HIMLoco/legged_gym/logs/rough_black/Mar04_09-32-17_ 
+# /home/guo/STU/HIMLoco/legged_gym/logs/rough_black/Mar03_15-16-10_
+# /home/guo/STU/HIMLoco/legged_gym/logs/rough_black/Feb02_22-39-15_
