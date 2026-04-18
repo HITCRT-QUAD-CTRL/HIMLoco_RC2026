@@ -250,13 +250,15 @@ if __name__ == '__main__':
     
     args.terrain = True
     # args.load_model = f'{LEGGED_GYM_ROOT_DIR}/logs/rough_black/exported/policies/policy.pt'
-    args.load_model = f'/home/guo/STU/HIMLoco/legged_gym/logs/rough_black/exported/jit_model.pt'
+    # args.load_model = f'/home/guo/STU/HIMLoco/legged_gym/logs/rough_black/exported/jit_model.pt'
+    args.load_model = f'/home/guo/HITCRT_QUAD/modules/model_converter/onnx_converter/exported/jit_model.pt'
+
     class Sim2simCfg(BlackRoughCfg):
         class mjsim_config:
             if args.terrain:
                 # mujoco_model_path = f'{LEGGED_GYM_ROOT_DIR}/resources/robots/go1/xml/world_terrain.xml'
                 # mujoco_model_path = f'{LEGGED_GYM_ROOT_DIR}/resources/robots/go1/xml/world_stairs.xml'
-                mujoco_model_path = f'{LEGGED_GYM_ROOT_DIR}/resources/robots/black/black.xml'
+                mujoco_model_path = f'{LEGGED_GYM_ROOT_DIR}/resources/robots/black/scene.xml'
             else:
                 mujoco_model_path = f'{LEGGED_GYM_ROOT_DIR}/resources/robots/go1/xml/world.xml'
             sim_duration = 600.0
@@ -266,8 +268,8 @@ if __name__ == '__main__':
         class robot_config:
             # kp_all = BlackRoughCfg.control.stiffness['joint'] 
             # kd_all = BlackRoughCfg.control.damping['joint'] 
-            kp_all = 50 
-            kd_all = 1
+            kp_all = 28
+            kd_all = 0.7
             
             kps = np.array([kp_all, kp_all, kp_all, kp_all, kp_all, kp_all, kp_all, kp_all, kp_all, kp_all, kp_all, kp_all], dtype=np.double)
             kds = np.array([kd_all, kd_all, kd_all, kd_all, kd_all, kd_all, kd_all, kd_all, kd_all, kd_all, kd_all, kd_all], dtype=np.double)

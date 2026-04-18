@@ -59,7 +59,20 @@ class BlackRoughCfg( LeggedRobotCfg ):
             'FR_calf_joint': 1.4,  # [rad]
             'RL_calf_joint': 1.4,    # [rad]
             'RR_calf_joint': 1.4,    # [rad]
-      
+            # 'FL_hip_joint': 0.3 ,  # [rad]
+            # 'FR_hip_joint': 0.3 ,  # [rad]
+            # 'RL_hip_joint': 0.3,   # [rad]
+            # 'RR_hip_joint': 0.3,   # [rad]
+
+            # 'FL_thigh_joint': -0.4,     # [rad]
+            # 'FR_thigh_joint': -0.4,     # [rad]
+            # 'RL_thigh_joint': -0.4,   # [rad]
+            # 'RR_thigh_joint': -0.4,   # [rad]
+
+            # 'FL_calf_joint': 0.6,   # [rad]
+            # 'FR_calf_joint': 0.6,  # [rad]
+            # 'RL_calf_joint': 0.6,    # [rad]
+            # 'RR_calf_joint': 0.6,    # [rad]
         }
 
     class control( LeggedRobotCfg.control ):
@@ -147,9 +160,9 @@ class BlackRoughCfgPPO( LeggedRobotCfgPPO ):
         experiment_name = 'rough_black'
 
         resume = False
-        load_run =  '/home/guo/STU/HIMLoco/legged_gym/logs/rough_black/Feb01_19-19-49_' 
+        load_run =  '/home/guo/STU/HIMLoco/policies' 
         checkpoint = -1 # -1 = last saved model
-        save_interval = 200 # check for potential saves every this many iterations
+        save_interval = 2000 # check for potential saves every this many iterations
         max_iterations = 7000
 
 
