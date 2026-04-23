@@ -9,11 +9,12 @@ from legged_gym import LEGGED_GYM_ROOT_DIR
 import pygame
 
 
-# from legged_gym.envs.go1.go1_config import BlackRoughCfg
-from legged_gym.envs.black.black_config import BlackRoughCfg
+# from legged_gym.envs.go1.go1_config import WhiteRoughCfg
+from legged_gym.envs.white.white_config import WhiteRoughCfg
 import torch
 
-asset_dof_names = ['FL_hip_joint', 'FL_thigh_joint', 'FL_calf_joint',
+asset_dof_names = [
+                   'FL_hip_joint', 'FL_thigh_joint', 'FL_calf_joint',
                    'FR_hip_joint', 'FR_thigh_joint', 'FR_calf_joint',
                    'RL_hip_joint', 'RL_thigh_joint', 'RL_calf_joint',
                    'RR_hip_joint', 'RR_thigh_joint', 'RR_calf_joint']
@@ -26,7 +27,7 @@ asset_dof_names = ['FL_hip_joint', 'FL_thigh_joint', 'FL_calf_joint',
 
 default_dof_pos = np.zeros(12)
 for i in range(len(asset_dof_names)):
-    default_dof_pos[i] = BlackRoughCfg.init_state.default_joint_angles[asset_dof_names[i]]
+    default_dof_pos[i] = WhiteRoughCfg.init_state.default_joint_angles[asset_dof_names[i]]
 
 class cmd:
     vx = 1.0
@@ -274,11 +275,11 @@ if __name__ == '__main__':
             kps = np.array([kp_all, kp_all, kp_all, kp_all, kp_all, kp_all, kp_all, kp_all, kp_all, kp_all, kp_all, kp_all], dtype=np.double)
             kds = np.array([kd_all, kd_all, kd_all, kd_all, kd_all, kd_all, kd_all, kd_all, kd_all, kd_all, kd_all, kd_all], dtype=np.double)
             # tau_limit = np.array([20., 55., 55., 20., 55., 55., 20., 55., 55., 20., 55., 55.])
-            tau_limit = np.array([33.5, 33.5, 33.5, 33.5, 33.5, 33.5, 33.5, 33.5, 33.5, 33.5, 33.5, 33.5])
-        class env(BlackRoughCfg.env):
+            tau_limit = np.array([23.7, 23.7, 23.7, 23.7, 23.7, 23.7, 23.7, 23.7, 23.7, 23.7, 23.7, 23.7])
+        class env(WhiteRoughCfg.env):
             pass
             
-        class normalization(BlackRoughCfg.normalization):
+        class normalization(WhiteRoughCfg.normalization):
             pass            
 
     policy = torch.jit.load(args.load_model)
