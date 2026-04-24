@@ -50,6 +50,10 @@ class A1RoughCfg( LeggedRobotCfg ):
             'RR_calf_joint': -1.5,    # [rad]
         }
 
+    class terrain( LeggedRobotCfg.terrain ):
+        mesh_type = 'plane' # "heightfield" # none, plane, heightfield or trimesh
+
+
     class control( LeggedRobotCfg.control ):
         # PD Drive parameters:
         control_type = 'P'
@@ -67,6 +71,18 @@ class A1RoughCfg( LeggedRobotCfg ):
             num_commands = 4 # default: lin_vel_x, lin_vel_y, ang_vel_yaw, heading (in heading mode ang_vel_yaw is recomputed from heading error)
             resampling_time = 10. # time before command are changed[s]
             heading_command = True # if true: compute ang vel command from heading error
+            
+                    
+            command_curriculum = True
+            curriculum = not command_curriculum
+            curriculum_seed = 100
+            num_lin_vel_bins = 21
+            num_y_vel_bins = 1
+            num_yaw_vel_bins = 21
+            limit_lin_vel_x = [-5.0, 5.0]
+            limit_lin_vel_y = [-1.0, 1.0]
+            limit_ang_vel_yaw = [-6.28, 6.28]
+            local_range = 0.5
             class ranges( LeggedRobotCfg.commands.ranges):
                 lin_vel_x = [-1.0, 1.0] # min max [m/s]
                 lin_vel_y = [-1.0, 1.0]   # min max [m/s]
@@ -122,10 +138,10 @@ class A1RoughCfgPPO( LeggedRobotCfgPPO ):
     class runner( LeggedRobotCfgPPO.runner ):
         run_name = ''
         experiment_name = 'rough_a1'
-
+        max_iterations = 5000 # number of policy updates
         resume = False
-        save_interval = 100
-        load_run="/home/guo/STU/HIMLoco/legged_gym/logs/rough_a1/Jan31_11-29-00_"
-        
+        save_interval = 200
+        load_run="/home/guo/STU/HIMLoco/legged_gym/logs/rough_a1/Apr23_23-05-02_"
+        checkpoint = 200
 
   

@@ -69,15 +69,28 @@ class LeggedRobotCfg(BaseConfig):
 
     class commands:
         curriculum = True
+        command_curriculum = False
+        curriculum_seed = 100
         max_curriculum = 3.0
         num_commands = 4 # default: lin_vel_x, lin_vel_y, ang_vel_yaw, heading (in heading mode ang_vel_yaw is recomputed from heading error)
+        num_lin_vel_bins = 21
+        num_y_vel_bins = 1
+        num_yaw_vel_bins = 21
         resampling_time = 10. # time before command are changed[s]
         heading_command = True # if true: compute ang vel command from heading error
+        limit_lin_vel_x = [-1.0, 1.0]
+        limit_lin_vel_y = [-1.0, 1.0]
+        limit_ang_vel_yaw = [-3.14, 3.14]
+        local_range = 0.5
         class ranges:
             lin_vel_x = [-1.0, 1.0] # min max [m/s]
             lin_vel_y = [-1.0, 1.0]   # min max [m/s]
             ang_vel_yaw = [-3.14, 3.14]    # min max [rad/s]
             heading = [-3.14, 3.14]
+
+    class curriculum_thresholds:
+        tracking_lin_vel = 0.8
+        tracking_ang_vel = 0.5
 
     class init_state:
         pos = [0.0, 0.0, 1.] # x,y,z [m]

@@ -46,6 +46,7 @@ from legged_gym.envs.base.base_task import BaseTask
 from legged_gym.utils.terrain import Terrain
 from legged_gym.utils.math import quat_apply_yaw, wrap_to_pi, torch_rand_sqrt_float
 from legged_gym.utils.helpers import class_to_dict
+from .curriculum import RewardThresholdCurriculum
 from .legged_robot_config import LeggedRobotCfg
 
 class LeggedRobot(BaseTask):
@@ -77,6 +78,8 @@ class LeggedRobot(BaseTask):
             self.set_camera(self.cfg.viewer.pos, self.cfg.viewer.lookat)
         self._init_buffers()
         self._prepare_reward_function()
+        if self.cfg.commands.command_curriculum:
+            self._init_command_distribution()
         self.init_done = True
 
     def step(self, actions):
@@ -177,7 +180,7 @@ class LeggedRobot(BaseTask):
         if self.cfg.terrain.curriculum:
             self._update_terrain_curriculum(env_ids)
         # avoid updating command curriculum at each step since the maximum command is common to all envs
-        if self.cfg.commands.curriculum and (self.common_step_counter % self.max_episode_length==0):
+        if self.cfg.commands.curriculum and not self.cfg.commands.command_curriculum and (self.common_step_counter % self.max_episode_length==0):
             self.update_command_curriculum(env_ids)
         
         # reset robot states
@@ -214,13 +217,37 @@ class LeggedRobot(BaseTask):
         # log additional curriculum info
         if self.cfg.terrain.curriculum:
             self.extras["episode"]["terrain_level"] = torch.mean(self.terrain_levels.float())
-        if self.cfg.commands.curriculum:
+        if self.cfg.commands.command_curriculum:
+            self.extras["episode"].update(self._get_command_curriculum_log_stats())
+        elif self.cfg.commands.curriculum:
             self.extras["episode"]["max_command_x"] = self.command_ranges["lin_vel_x"][1]
         # send timeout info to the algorithm
         if self.cfg.env.send_timeouts:
             self.extras["time_outs"] = self.time_out_buf
 
         self.episode_length_buf[env_ids] = 0
+
+    def _get_command_curriculum_log_stats(self):
+        if not hasattr(self, "curriculum"):
+            return {
+                "command_area": 0.0,
+                "curriculum_weight_mean": 0.0,
+                "curriculum_weight_max": 0.0,
+            }
+
+        weights = np.asarray(self.curriculum.weights)
+        if weights.size == 0:
+            return {
+                "command_area": 0.0,
+                "curriculum_weight_mean": 0.0,
+                "curriculum_weight_max": 0.0,
+            }
+
+        return {
+            "command_area": float(np.sum(weights) / weights.shape[0]),
+            "curriculum_weight_mean": float(weights.mean()),
+            "curriculum_weight_max": float(weights.max()),
+        }
     
     def compute_reward(self):
         """ Compute rewards
@@ -458,28 +485,91 @@ class LeggedRobot(BaseTask):
         Args:
             env_ids (List[int]): Environments ids for which new commands are needed
         """
+        if len(env_ids) == 0:
+            return
         if self.focus:
             self.commands[env_ids, 0] = 0.0
             self.commands[env_ids, 1] = 0.0
             self.commands[env_ids, 2] = 0.0
             return
-        self.commands[env_ids, 0] = torch_rand_float(-1.0, 1.0, (len(env_ids), 1), device=self.device).squeeze(1)
-        self.commands[env_ids, 1] = torch_rand_float(self.command_ranges["lin_vel_y"][0], self.command_ranges["lin_vel_y"][1], (len(env_ids), 1), device=self.device).squeeze(1)
-        if self.cfg.commands.heading_command:
-            self.commands[env_ids, 3] = torch_rand_float(self.command_ranges["heading"][0], self.command_ranges["heading"][1], (len(env_ids), 1), device=self.device).squeeze(1)
+
+        if self.cfg.commands.command_curriculum:
+            timesteps = int(self.cfg.commands.resampling_time / self.dt)
+            ep_len = min(self.max_episode_length, timesteps)
+            lin_vel_rewards = self.episode_sums["tracking_lin_vel"][env_ids] / ep_len
+            ang_vel_rewards = self.episode_sums["tracking_ang_vel"][env_ids] / ep_len
+
+            lin_vel_threshold = self.cfg.curriculum_thresholds.tracking_lin_vel * self.reward_scales["tracking_lin_vel"]
+            ang_vel_threshold = self.cfg.curriculum_thresholds.tracking_ang_vel * self.reward_scales["tracking_ang_vel"]
+
+            env_ids_np = env_ids.detach().cpu().numpy().astype(np.int64, copy=False)
+            old_bins = self.env_command_bins[env_ids_np]
+            self.curriculum.update(
+                old_bins,
+                lin_vel_rewards.detach().cpu().numpy(),
+                ang_vel_rewards.detach().cpu().numpy(),
+                lin_vel_threshold,
+                ang_vel_threshold,
+                local_range=self.cfg.commands.local_range,
+            )
+
+            new_commands, new_bin_inds = self.curriculum.sample(batch_size=len(env_ids))
+            self.env_command_bins[env_ids_np] = new_bin_inds
+            self.commands[env_ids, :3] = torch.as_tensor(new_commands, device=self.device, dtype=self.commands.dtype)
+            if self.cfg.commands.heading_command:
+                self.commands[env_ids, 3] = torch_rand_float(self.command_ranges["heading"][0], self.command_ranges["heading"][1], (len(env_ids), 1), device=self.device).squeeze(1)
         else:
-            self.commands[env_ids, 2] = torch_rand_float(self.command_ranges["ang_vel_yaw"][0], self.command_ranges["ang_vel_yaw"][1], (len(env_ids), 1), device=self.device).squeeze(1)
+            self.commands[env_ids, 0] = torch_rand_float(-1.0, 1.0, (len(env_ids), 1), device=self.device).squeeze(1)
+            self.commands[env_ids, 1] = torch_rand_float(self.command_ranges["lin_vel_y"][0], self.command_ranges["lin_vel_y"][1], (len(env_ids), 1), device=self.device).squeeze(1)
+            if self.cfg.commands.heading_command:
+                self.commands[env_ids, 3] = torch_rand_float(self.command_ranges["heading"][0], self.command_ranges["heading"][1], (len(env_ids), 1), device=self.device).squeeze(1)
+            else:
+                self.commands[env_ids, 2] = torch_rand_float(self.command_ranges["ang_vel_yaw"][0], self.command_ranges["ang_vel_yaw"][1], (len(env_ids), 1), device=self.device).squeeze(1)
 
-        high_vel_env_ids = (env_ids < (self.num_envs * 0.2))
-        high_vel_env_ids = env_ids[high_vel_env_ids.nonzero(as_tuple=True)]
+            high_vel_env_ids = (env_ids < (self.num_envs * 0.2))
+            high_vel_env_ids = env_ids[high_vel_env_ids.nonzero(as_tuple=True)]
 
-        self.commands[high_vel_env_ids, 0] = torch_rand_float(self.command_ranges["lin_vel_x"][0], self.command_ranges["lin_vel_x"][1], (len(high_vel_env_ids), 1), device=self.device).squeeze(1)
+            self.commands[high_vel_env_ids, 0] = torch_rand_float(self.command_ranges["lin_vel_x"][0], self.command_ranges["lin_vel_x"][1], (len(high_vel_env_ids), 1), device=self.device).squeeze(1)
 
-        # set y commands of high vel envs to zero
-        self.commands[high_vel_env_ids, 1:2] *= (torch.norm(self.commands[high_vel_env_ids, 0:1], dim=1) < 1.0).unsqueeze(1)
+            # set y commands of high vel envs to zero
+            self.commands[high_vel_env_ids, 1:2] *= (torch.norm(self.commands[high_vel_env_ids, 0:1], dim=1) < 1.0).unsqueeze(1)
 
         # set small commands to zero
         self.commands[env_ids, :2] *= (torch.norm(self.commands[env_ids, :2], dim=1) > 0.2).unsqueeze(1)
+
+    def _init_command_distribution(self):
+        self.curriculum = RewardThresholdCurriculum(
+            seed=self.cfg.commands.curriculum_seed,
+            x_vel=(
+                self.cfg.commands.limit_lin_vel_x[0],
+                self.cfg.commands.limit_lin_vel_x[1],
+                self.cfg.commands.num_lin_vel_bins,
+            ),
+            y_vel=(
+                self.cfg.commands.limit_lin_vel_y[0],
+                self.cfg.commands.limit_lin_vel_y[1],
+                self.cfg.commands.num_y_vel_bins,
+            ),
+            yaw_vel=(
+                self.cfg.commands.limit_ang_vel_yaw[0],
+                self.cfg.commands.limit_ang_vel_yaw[1],
+                self.cfg.commands.num_yaw_vel_bins,
+            ),
+        )
+        self.env_command_bins = np.zeros(self.num_envs, dtype=np.int64)
+
+        # Start from a small center region and expand outward
+        low = np.array([
+            -0.2,  # x_vel center
+            self.cfg.commands.limit_lin_vel_y[0],
+            -0.5,  # yaw_vel center
+        ])
+        high = np.array([
+            0.2,   # x_vel center
+            self.cfg.commands.limit_lin_vel_y[1],
+            0.5,   # yaw_vel center
+        ])
+        self.curriculum.set_to(low=low, high=high, value=1.0)
 
     def _compute_torques(self, actions):
         """ Compute torques from actions.
