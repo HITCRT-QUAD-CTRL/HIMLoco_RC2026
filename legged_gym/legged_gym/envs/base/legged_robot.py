@@ -227,6 +227,9 @@ class LeggedRobot(BaseTask):
 
         self.episode_length_buf[env_ids] = 0
 
+        # reset lag buffer
+        self.lag_buffer[env_ids, :, :] = 0.
+
     def _get_command_curriculum_log_stats(self):
         if not hasattr(self, "curriculum"):
             return {
@@ -585,7 +588,12 @@ class LeggedRobot(BaseTask):
         #pd controller
         actions_scaled = actions * self.cfg.control.action_scale
         actions_scaled[:, [0, 3, 6, 9]] *=self.cfg.control.hip_reduction
-        self.joint_pos_target = self.default_dof_pos + actions_scaled
+     
+        if self.cfg.domain_rand.randomize_lag_timesteps: # TODO 控制器随机延迟计算逻辑   
+            self.lag_buffer = torch.cat([self.lag_buffer[:,1:,:].clone(),actions_scaled.unsqueeze(1).clone()],dim=1)
+            self.joint_pos_target = self.lag_buffer[self.num_envs_indexes, self.randomized_lag,:] + self.default_dof_pos
+        else:
+            self.joint_pos_target = self.default_dof_pos + actions_scaled
 
         control_type = self.cfg.control.control_type
         if control_type=="P":
@@ -811,6 +819,8 @@ class LeggedRobot(BaseTask):
         self.friction_coeffs = torch.ones(self.num_envs, 1, dtype=torch.float, device=self.device, requires_grad=False)
         self.restitution_coeffs = torch.zeros(self.num_envs, 1, dtype=torch.float, device=self.device, requires_grad=False)
 
+        # store lag buffer
+        self.lag_buffer = torch.zeros(self.num_envs, self.cfg.domain_rand.lag_timesteps, self.num_actions, dtype=torch.float, device=self.device, requires_grad=False)
 
     def _prepare_reward_function(self):
         """ Prepares a list of reward functions, whcih will be called to compute the total reward.
@@ -948,7 +958,10 @@ class LeggedRobot(BaseTask):
             self.payload = torch_rand_float(self.cfg.domain_rand.payload_mass_range[0], self.cfg.domain_rand.payload_mass_range[1], (self.num_envs, 1), device=self.device)
         if self.cfg.domain_rand.randomize_com_displacement:
             self.com_displacement = torch_rand_float(self.cfg.domain_rand.com_displacement_range[0], self.cfg.domain_rand.com_displacement_range[1], (self.num_envs, 3), device=self.device)
-            
+        if self.cfg.domain_rand.randomize_lag_timesteps: # TODO: 控制器随机延迟初始化
+            self.num_envs_indexes = list(range(0,self.num_envs))
+            self.randomized_lag = np.random.randint(0, self.cfg.domain_rand.lag_timesteps, size=self.num_envs).tolist()
+   
         for i in range(self.num_envs):
             # create env instance
             env_handle = self.gym.create_env(self.sim, env_lower, env_upper, int(np.sqrt(self.num_envs)))

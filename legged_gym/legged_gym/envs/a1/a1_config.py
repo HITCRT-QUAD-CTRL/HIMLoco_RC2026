@@ -64,7 +64,9 @@ class A1RoughCfg( LeggedRobotCfg ):
         # decimation: Number of control action updates @ sim DT per policy DT
         decimation = 4
         hip_reduction = 1.0
-    
+    class domain_rand( LeggedRobotCfg.domain_rand ):
+        randomize_lag_timesteps = True
+        lag_timesteps = 6
     class commands( LeggedRobotCfg.commands ):
             curriculum = True
             max_curriculum = 2.0

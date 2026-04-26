@@ -172,6 +172,9 @@ class LeggedRobotCfg(BaseConfig):
 
         delay = True
 
+        # TODO 控制器延迟
+        randomize_lag_timesteps = True
+        lag_timesteps = 6
     class rewards:
         class scales:
             termination = -0.0
