@@ -41,6 +41,16 @@ def quat_apply_yaw(quat, vec):
     quat_yaw = normalize(quat_yaw)
     return quat_apply(quat_yaw, vec)
 
+def quat_conjugate(quat):
+    """
+    计算四元数的共轭
+    q = [x, y, z, w]
+    q* = [-x, -y, -z, w]
+    """
+    conj = quat.clone()
+    conj[..., :3] = -conj[..., :3]
+    return conj
+
 # @ torch.jit.script
 def wrap_to_pi(angles):
     angles %= 2*np.pi

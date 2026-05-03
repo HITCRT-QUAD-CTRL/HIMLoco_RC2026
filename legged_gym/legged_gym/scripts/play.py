@@ -38,6 +38,8 @@ from legged_gym.utils import  get_args, export_policy_as_jit, task_registry, Log
 import numpy as np
 import torch
 
+LEG_LABELS = ["FL", "FR", "RL", "RR"]
+
 
 def play(args, x_vel=1.0, y_vel=0.0, yaw_vel=0.0):
     env_cfg, train_cfg = task_registry.get_cfgs(name=args.task)
@@ -68,6 +70,10 @@ def play(args, x_vel=1.0, y_vel=0.0, yaw_vel=0.0):
     print("SIMULATION DOF ORDER (Network Output Order):")
     for i, name in enumerate(env.dof_names):
         print(f"Index {i}: {name}")
+    print("---------------------------------------------------------")
+    print("FEET ORDER (Gait/Contact Order):")
+    for i, (name, index) in enumerate(zip(env.feet_names, env.feet_indices)):
+        print(f"Slot {i}: {name} -> rigid_body_index {index.item()}")
     print("---------------------------------------------------------")
 
     obs = env.get_observations()
@@ -111,6 +117,22 @@ def play(args, x_vel=1.0, y_vel=0.0, yaw_vel=0.0):
         # env.commands[:, 1] = y_vel
         # env.commands[:, 2] = yaw_vel
         obs, _, rews, dones, infos, _, _ = env.step(actions.detach())
+
+        if i % 100 == 0:
+            robot_target_phase = env.foot_indices[robot_index].detach().cpu().numpy()
+            robot_target_contact = env.desired_contact_states[robot_index].detach().cpu().numpy()
+            robot_actual_contact = (env.contact_forces[robot_index, env.feet_indices, 2] > 1.0).detach().cpu().numpy().astype(np.int32)
+
+            print(f"[step {i}] gait_index={env.gait_indices[robot_index].item():.3f}")
+            print("  target_phase : " + ", ".join(
+                f"{leg}={phase:.3f}" for leg, phase in zip(LEG_LABELS, robot_target_phase)
+            ))
+            print("  target_contact_prob : " + ", ".join(
+                f"{leg}={contact_prob:.3f}" for leg, contact_prob in zip(LEG_LABELS, robot_target_contact)
+            ))
+            print("  actual_contact_phase: " + ", ".join(
+                f"{leg}={contact}" for leg, contact in zip(LEG_LABELS, robot_actual_contact)
+            ))
 
         if RECORD_FRAMES:
             if i % 2:

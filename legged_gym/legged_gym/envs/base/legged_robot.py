@@ -44,7 +44,7 @@ from typing import Tuple, Dict
 from legged_gym import LEGGED_GYM_ROOT_DIR
 from legged_gym.envs.base.base_task import BaseTask
 from legged_gym.utils.terrain import Terrain
-from legged_gym.utils.math import quat_apply_yaw, wrap_to_pi, torch_rand_sqrt_float
+from legged_gym.utils.math import quat_apply_yaw, wrap_to_pi, torch_rand_sqrt_float, quat_conjugate
 from legged_gym.utils.helpers import class_to_dict
 from .curriculum import RewardThresholdCurriculum
 from .legged_robot_config import LeggedRobotCfg
@@ -258,11 +258,32 @@ class LeggedRobot(BaseTask):
             adds each terms to the episode sums and to the total reward
         """
         self.rew_buf[:] = 0.
+        task_reward = torch.zeros(self.num_envs, dtype=torch.float, device=self.device, requires_grad=False)
+        aux_reward = torch.zeros(self.num_envs, dtype=torch.float, device=self.device, requires_grad=False)
+        has_task_reward = False
+        has_aux_reward = False
         for i in range(len(self.reward_functions)):
             name = self.reward_names[i]
             rew = self.reward_functions[i]() * self.reward_scales[name]
-            self.rew_buf += rew
-            self.episode_sums[name] += rew
+
+            if self.selective_reward_decay and name in self.reward_decay_task_names: # task rewards
+                task_reward += rew
+                has_task_reward = True
+                self.episode_sums[name] += rew
+            elif self.selective_reward_decay and name in self.reward_decay_aux_names: # auxiliary rewards
+                aux_reward += rew
+                has_aux_reward = True
+                self.episode_sums[name] += rew
+            else: # other rewards
+                self.rew_buf += rew
+                self.episode_sums[name] += rew
+
+        if self.selective_reward_decay:
+            if has_task_reward and has_aux_reward:
+                self.rew_buf += task_reward * torch.exp(self.reward_decay_aux_scale * aux_reward)
+            else:
+                self.rew_buf += task_reward + aux_reward
+
         if self.cfg.rewards.only_positive_rewards:
             self.rew_buf[:] = torch.clip(self.rew_buf[:], min=0.)
         # add termination reward after clipping
@@ -474,7 +495,9 @@ class LeggedRobot(BaseTask):
             forward = quat_apply(self.base_quat, self.forward_vec)
             heading = torch.atan2(forward[:, 1], forward[:, 0])
             self.commands[:, 2] = torch.clip(0.5*wrap_to_pi(self.commands[:, 3] - heading), -2., 2.)
-
+        # 
+        self._step_contact_targets()
+        
         if self.cfg.terrain.measure_heights:
             self.measured_heights = self._get_heights()
         if self.cfg.domain_rand.push_robots and  (self.common_step_counter % self.cfg.domain_rand.push_interval == 0):
@@ -482,6 +505,82 @@ class LeggedRobot(BaseTask):
         if self.cfg.domain_rand.disturbance and (self.common_step_counter % self.cfg.domain_rand.disturbance_interval == 0):
             self._disturbance_robots()
 
+
+    def _step_contact_targets(self):
+        """
+        更新 Contact Schedule
+        使用固定配置参数替代 commands[:, 4:9]
+        """
+        # 使用固定配置（替代 commands）
+        frequencies = self.cfg.rewards.gait_frequency    # 替代 commands[:, 4]
+        phases = self.cfg.rewards.gait_phase             # 替代 commands[:, 5]
+        offsets = self.cfg.rewards.gait_offset           # 替代 commands[:, 6]
+        bounds = self.cfg.rewards.gait_bound             # 替代 commands[:, 7]
+        durations = self.cfg.rewards.gait_duration       # 替代 commands[:, 8]
+        
+        # 更新全局步态索引
+        self.gait_indices = torch.remainder(
+            self.gait_indices + self.dt * frequencies, 1.0
+        )
+        
+        # 计算每个足部的相位索引（Trot gait）
+        if hasattr(self.cfg.commands, 'pacing_offset') and self.cfg.commands.pacing_offset:
+            # Pacing gait
+            foot_indices = [
+                self.gait_indices + phases + offsets + bounds,
+                self.gait_indices + bounds,
+                self.gait_indices + offsets,
+                self.gait_indices + phases
+            ]
+        else:
+            foot_indices = [
+                self.gait_indices + phases + offsets + bounds,  # FL
+                self.gait_indices + offsets,                     # FR
+                self.gait_indices + bounds,                      # RL
+                self.gait_indices + phases                       # RR
+            ]
+        
+        # 合并并归一化
+        self.foot_indices = torch.remainder(
+            torch.cat([foot_indices[i].unsqueeze(1) for i in range(4)], dim=1),
+            1.0
+        )
+        
+        # 映射到支撑/摆动相位
+        for idxs in foot_indices:
+            stance_idxs = torch.remainder(idxs, 1) < durations
+            swing_idxs = torch.remainder(idxs, 1) > durations
+            
+            idxs[stance_idxs] = torch.remainder(idxs[stance_idxs], 1) * (
+                0.5 / durations
+            )
+            idxs[swing_idxs] = 0.5 + (
+                torch.remainder(idxs[swing_idxs], 1) - durations
+            ) * (0.5 / (1 - durations))
+        
+        # 生成时钟输入（用于观测）
+        for i in range(4):
+            self.clock_inputs[:, i] = torch.sin(2 * np.pi * foot_indices[i])
+            self.doubletime_clock_inputs[:, i] = torch.sin(4 * np.pi * foot_indices[i])
+            self.halftime_clock_inputs[:, i] = torch.sin(np.pi * foot_indices[i])
+        
+        # 计算期望接触状态（von Mises 平滑）
+        kappa = self.cfg.rewards.kappa_gait_probs
+        smoothing_cdf_start = torch.distributions.normal.Normal(
+            0, kappa
+        ).cdf
+        
+        for i in range(4):
+            smoothing_multiplier = (
+                smoothing_cdf_start(torch.remainder(foot_indices[i], 1.0)) * (
+                    1 - smoothing_cdf_start(torch.remainder(foot_indices[i], 1.0) - 0.5)
+                ) +
+                smoothing_cdf_start(torch.remainder(foot_indices[i], 1.0) - 1) * (
+                    1 - smoothing_cdf_start(torch.remainder(foot_indices[i], 1.0) - 0.5 - 1)
+                )
+            )
+            self.desired_contact_states[:, i] = smoothing_multiplier 
+    
     def _resample_commands(self, env_ids):
         """ Randommly select commands of some environments
 
@@ -822,10 +921,25 @@ class LeggedRobot(BaseTask):
         # store lag buffer
         self.lag_buffer = torch.zeros(self.num_envs, self.cfg.domain_rand.lag_timesteps, self.num_actions, dtype=torch.float, device=self.device, requires_grad=False)
 
+        # Contact Schedule 缓冲区
+        self.gait_indices = torch.zeros(self.num_envs, dtype=torch.float, device=self.device, requires_grad=False)
+        self.foot_indices = torch.zeros(self.num_envs, 4, dtype=torch.float, device=self.device, requires_grad=False)
+        self.desired_contact_states = torch.zeros(self.num_envs, 4, dtype=torch.float, device=self.device, requires_grad=False)
+        
+        # 时钟输入（用于观测）
+        self.clock_inputs = torch.zeros(self.num_envs, 4, dtype=torch.float, device=self.device, requires_grad=False)
+        self.doubletime_clock_inputs = torch.zeros(self.num_envs, 4, dtype=torch.float, device=self.device, requires_grad=False)
+        self.halftime_clock_inputs = torch.zeros(self.num_envs, 4, dtype=torch.float, device=self.device, requires_grad=False)
+
     def _prepare_reward_function(self):
         """ Prepares a list of reward functions, whcih will be called to compute the total reward.
             Looks for self._reward_<REWARD_NAME>, where <REWARD_NAME> are names of all non zero reward scales in the cfg.
         """
+        self.selective_reward_decay = getattr(self.cfg.rewards, "selective_reward_decay", False)
+        self.reward_decay_task_names = set(getattr(self.cfg.rewards, "selective_reward_decay_task_names", []))
+        self.reward_decay_aux_names = set(getattr(self.cfg.rewards, "selective_reward_decay_aux_names", []))
+        self.reward_decay_aux_scale = getattr(self.cfg.rewards, "selective_reward_decay_aux_scale", 1.0)
+
         # remove zero scales + multiply non-zero ones by dt
         for key in list(self.reward_scales.keys()):
             scale = self.reward_scales[key]
@@ -833,6 +947,12 @@ class LeggedRobot(BaseTask):
                 self.reward_scales.pop(key) 
             else:
                 self.reward_scales[key] *= self.dt
+
+        if self.selective_reward_decay:
+            active_reward_names = set(self.reward_scales.keys())
+            self.reward_decay_task_names &= active_reward_names
+            self.reward_decay_aux_names &= active_reward_names
+
         # prepare list of functions
         self.reward_functions = []
         self.reward_names = []
@@ -932,6 +1052,14 @@ class LeggedRobot(BaseTask):
         self.num_bodies = len(body_names)
         self.num_dofs = len(self.dof_names)
         feet_names = [s for s in body_names if self.cfg.asset.foot_name in s]
+        canonical_feet_names = []
+        for leg_name in ["FL", "FR", "RL", "RR"]:
+            matches = [s for s in feet_names if leg_name in s]
+            if len(matches) == 1:
+                canonical_feet_names.append(matches[0])
+        if len(canonical_feet_names) == len(feet_names):
+            feet_names = canonical_feet_names
+        self.feet_names = feet_names
         penalized_contact_names = []
         for name in self.cfg.asset.penalize_contacts_on:
             penalized_contact_names.extend([s for s in body_names if name in s])
@@ -1328,3 +1456,105 @@ class LeggedRobot(BaseTask):
     def _reward_feet_contact_forces(self):
         # penalize high contact forces
         return torch.sum((torch.norm(self.contact_forces[:, self.feet_indices, :], dim=-1) -  self.cfg.rewards.max_contact_force).clip(min=0.), dim=1)
+
+    def _reward_feet_slip(self):
+        contact = self.contact_forces[:, self.feet_indices, 2] > 1.
+        contact_filt = torch.logical_or(contact, self.last_contacts)
+        self.last_contacts = contact
+        foot_velocities = torch.square(torch.norm(self.feet_vel[:, :, 0:2], dim=2).view(self.num_envs, -1))
+        rew_slip = torch.sum(contact_filt * foot_velocities, dim=1)
+        return rew_slip
+
+    #============================= walk these ways 步态奖励 ==============================
+
+    # ========== Contact Schedule 奖励 ==========
+    def _reward_tracking_contacts_shaped_force(self):
+        foot_forces = torch.norm(self.contact_forces[:, self.feet_indices, :], dim=-1)
+        desired_contact = self.desired_contact_states
+
+        reward = 0
+        for i in range(4):
+            reward += - (1 - desired_contact[:, i]) * (
+                        1 - torch.exp(-foot_forces[:, i] ** 2 / self.cfg.rewards.gait_force_sigma))
+        return reward / 4
+
+    def _reward_tracking_contacts_shaped_vel(self):
+        foot_velocities = torch.norm(self.feet_vel, dim=2).view(self.num_envs, -1)
+        desired_contact = self.desired_contact_states
+        reward = 0
+        for i in range(4):
+            reward += - (desired_contact[:, i] * (
+                        1 - torch.exp(-foot_velocities[:, i] ** 2 / self.cfg.rewards.gait_vel_sigma)))
+        return reward / 4
+    
+    # ========== Raibert Heuristic 奖励 ==========
+
+    def _reward_raibert_heuristic(self):
+        """
+        Raibert Heuristic 步态奖励
+        使用固定配置替代 commands[:, 4, 12, 13]
+        只使用 commands[:, 0:3]（x_vel, y_vel, yaw_vel）
+        """
+        # 将足部位置转换到身体坐标系
+        cur_footsteps_translated = (
+            self.feet_pos - self.root_states[:, 0:3].unsqueeze(1)
+        )
+        footsteps_in_body_frame = torch.zeros(
+            self.num_envs, 4, 3, device=self.device
+        )
+        for i in range(4):
+            footsteps_in_body_frame[:, i, :] = quat_apply_yaw(
+                quat_conjugate(self.base_quat),
+                cur_footsteps_translated[:, i, :]
+            )
+        
+        # 使用固定站立宽度（替代 commands[:, 12]）
+        stance_width = self.cfg.rewards.raibert_stance_width
+        desired_ys_nom = torch.tensor([
+            stance_width / 2, -stance_width / 2,
+            stance_width / 2, -stance_width / 2
+        ], device=self.device).unsqueeze(0).expand(self.num_envs, -1)
+        
+        # 使用固定站立长度（替代 commands[:, 13]）
+        stance_length = self.cfg.rewards.raibert_stance_length
+        desired_xs_nom = torch.tensor([
+            stance_length / 2, stance_length / 2,
+            -stance_length / 2, -stance_length / 2
+        ], device=self.device).unsqueeze(0).expand(self.num_envs, -1)
+        
+        # 计算相位因子
+        phases = torch.abs(1.0 - (self.foot_indices * 2.0)) * 1.0 - 0.5
+        
+        # 使用固定步态频率（替代 commands[:, 4]）
+        frequency = self.cfg.rewards.gait_frequency
+        
+        # 使用网络输入的速度命令
+        x_vel_des = self.commands[:, 0:1]
+        yaw_vel_des = self.commands[:, 2:3]
+        
+        # 计算侧向速度（由偏航产生）
+        y_vel_des = yaw_vel_des * stance_length / 2
+        
+        # 计算 Raibert 偏移
+        half_period = 0.5 / frequency
+        desired_ys_offset = phases * y_vel_des * half_period
+        desired_ys_offset[:, 2:4] *= -1  # 后腿反向
+        desired_xs_offset = phases * x_vel_des * half_period
+        
+        # 合并名义位置和偏移
+        desired_ys_nom = desired_ys_nom + desired_ys_offset
+        desired_xs_nom = desired_xs_nom + desired_xs_offset
+        
+        # 构建期望足部落点
+        desired_footsteps_body_frame = torch.cat(
+            (desired_xs_nom.unsqueeze(2), desired_ys_nom.unsqueeze(2)),
+            dim=2
+        )
+        
+        # 计算误差
+        err_raibert_heuristic = torch.abs(
+            desired_footsteps_body_frame - footsteps_in_body_frame[:, :, 0:2]
+        )
+
+        
+        return torch.sum(torch.square(err_raibert_heuristic), dim=(1, 2))
