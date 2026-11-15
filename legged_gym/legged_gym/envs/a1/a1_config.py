@@ -125,12 +125,13 @@ class A1RoughCfg( LeggedRobotCfg ):
             dof_vel_limits = -0.0
             torque_limits = -0.0
             
+
             feet_slip = -0.1
 
             tracking_contacts_shaped_force = 4.0
             tracking_contacts_shaped_vel = 4.0
             raibert_heuristic = -10.0
-            
+            hip_pos = -0.1
 
         only_positive_rewards = False # if true negative total rewards are clipped at zero (avoids early termination problems)
         selective_reward_decay = True
