@@ -59,7 +59,20 @@ class BlackRoughCfg( LeggedRobotCfg ):
             'FR_calf_joint': 1.4,  # [rad]
             'RL_calf_joint': 1.4,    # [rad]
             'RR_calf_joint': 1.4,    # [rad]
-      
+            # 'FL_hip_joint': 0.3 ,  # [rad]
+            # 'FR_hip_joint': 0.3 ,  # [rad]
+            # 'RL_hip_joint': 0.3,   # [rad]
+            # 'RR_hip_joint': 0.3,   # [rad]
+
+            # 'FL_thigh_joint': -0.4,     # [rad]
+            # 'FR_thigh_joint': -0.4,     # [rad]
+            # 'RL_thigh_joint': -0.4,   # [rad]
+            # 'RR_thigh_joint': -0.4,   # [rad]
+
+            # 'FL_calf_joint': 0.6,   # [rad]
+            # 'FR_calf_joint': 0.6,  # [rad]
+            # 'RL_calf_joint': 0.6,    # [rad]
+            # 'RR_calf_joint': 0.6,    # [rad]
         }
 
     class control( LeggedRobotCfg.control ):
@@ -75,11 +88,20 @@ class BlackRoughCfg( LeggedRobotCfg ):
     
 
     class commands( LeggedRobotCfg.commands ):
-        curriculum = True
+        command_curriculum = True
+        curriculum = False
+        curriculum_seed = 100
         max_curriculum = 2
         num_commands = 4 # default: lin_vel_x, lin_vel_y, ang_vel_yaw, heading (in heading mode ang_vel_yaw is recomputed from heading error)
+        num_lin_vel_bins = 21
+        num_y_vel_bins = 1
+        num_yaw_vel_bins = 21
         resampling_time = 10. # time before command are changed[s]
         heading_command = True # if true: compute ang vel command from heading error
+        limit_lin_vel_x = [-1.0, 1.0]
+        limit_lin_vel_y = [-1.0, 1.0]
+        limit_ang_vel_yaw = [-3.14, 3.14]
+        local_range = 0.5
         class ranges( LeggedRobotCfg.commands.ranges):
             lin_vel_x = [-1.0, 1.0] # min max [m/s]
             lin_vel_y = [-1.0, 1.0]   # min max [m/s]
@@ -147,9 +169,9 @@ class BlackRoughCfgPPO( LeggedRobotCfgPPO ):
         experiment_name = 'rough_black'
 
         resume = False
-        load_run =  '/home/guo/STU/HIMLoco/legged_gym/logs/rough_black/Feb01_19-19-49_' 
-        checkpoint = -1 # -1 = last saved model
-        save_interval = 200 # check for potential saves every this many iterations
+        load_run = '/home/guo/HITCRT_QUAD/modules/model_converter/model/upstair'
+        checkpoint = '5000' # -1 = last saved model
+        save_interval = 2000 # check for potential saves every this many iterations
         max_iterations = 7000
 
 
@@ -157,3 +179,4 @@ class BlackRoughCfgPPO( LeggedRobotCfgPPO ):
 # /home/guo/STU/HIMLoco/legged_gym/logs/rough_black/Mar04_09-32-17_ 
 # /home/guo/STU/HIMLoco/legged_gym/logs/rough_black/Mar03_15-16-10_
 # /home/guo/STU/HIMLoco/legged_gym/logs/rough_black/Feb02_22-39-15_
+

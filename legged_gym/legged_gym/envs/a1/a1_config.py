@@ -50,6 +50,10 @@ class A1RoughCfg( LeggedRobotCfg ):
             'RR_calf_joint': -1.5,    # [rad]
         }
 
+    class terrain( LeggedRobotCfg.terrain ):
+        mesh_type = 'plane' # "heightfield" # none, plane, heightfield or trimesh
+
+
     class control( LeggedRobotCfg.control ):
         # PD Drive parameters:
         control_type = 'P'
@@ -61,12 +65,26 @@ class A1RoughCfg( LeggedRobotCfg ):
         decimation = 4
         hip_reduction = 1.0
     
+    # class domain_rand( LeggedRobotCfg.domain_rand ):
+    #     randomize_lag_timesteps = True
+    #     lag_timesteps = 6
+    
     class commands( LeggedRobotCfg.commands ):
             curriculum = True
             max_curriculum = 2.0
             num_commands = 4 # default: lin_vel_x, lin_vel_y, ang_vel_yaw, heading (in heading mode ang_vel_yaw is recomputed from heading error)
             resampling_time = 10. # time before command are changed[s]
-            heading_command = True # if true: compute ang vel command from heading error
+            heading_command = True # if true: compute ang vel command from heading error        
+            # command_curriculum = True
+            # curriculum = not command_curriculum
+            # curriculum_seed = 100
+            # num_lin_vel_bins = 21
+            # num_y_vel_bins = 1
+            # num_yaw_vel_bins = 21
+            # limit_lin_vel_x = [-5.0, 5.0]
+            # limit_lin_vel_y = [-1.0, 1.0]
+            # limit_ang_vel_yaw = [-6.28, 6.28]
+            # local_range = 0.5
             class ranges( LeggedRobotCfg.commands.ranges):
                 lin_vel_x = [-1.0, 1.0] # min max [m/s]
                 lin_vel_y = [-1.0, 1.0]   # min max [m/s]
@@ -88,7 +106,7 @@ class A1RoughCfg( LeggedRobotCfg ):
             termination = -0.0
             tracking_lin_vel = 1.0
             tracking_ang_vel = 0.5
-            lin_vel_z = -2.0
+            lin_vel_z = -0.2
             ang_vel_xy = -0.05
             orientation = -0.2
             dof_acc = -2.5e-7
@@ -106,8 +124,31 @@ class A1RoughCfg( LeggedRobotCfg ):
             dof_pos_limits = -0.0
             dof_vel_limits = -0.0
             torque_limits = -0.0
+            
+
+            feet_slip = -0.1
+
+            tracking_contacts_shaped_force = 4.0
+            tracking_contacts_shaped_vel = 4.0
+            raibert_heuristic = -10.0
+            hip_pos = -0.1
 
         only_positive_rewards = False # if true negative total rewards are clipped at zero (avoids early termination problems)
+        selective_reward_decay = True
+        selective_reward_decay_task_names = ["tracking_lin_vel", "tracking_ang_vel"]
+        selective_reward_decay_aux_names = [
+            "lin_vel_z",
+            "ang_vel_xy",
+            "orientation",
+            "dof_acc",
+            "base_height",
+            "foot_clearance",
+            "feet_slip",
+            "tracking_contacts_shaped_force",
+            "tracking_contacts_shaped_vel",
+            "raibert_heuristic",
+        ]
+        selective_reward_decay_aux_scale = 1.0
         tracking_sigma = 0.25 # tracking reward = exp(-error^2/sigma)
         soft_dof_pos_limit = 1. # percentage of urdf limits, values above this limit are penalized
         soft_dof_vel_limit = 1.
@@ -115,6 +156,22 @@ class A1RoughCfg( LeggedRobotCfg ):
         base_height_target = 0.30
         max_contact_force = 100. # forces above this value are penalized
         clearance_height_target = -0.2
+        
+        # Contact Schedule 参数
+        gait_force_sigma = 50.0  # 接触力跟踪 sigma
+        gait_vel_sigma = 0.5  # 速度跟踪 sigma
+        
+        # Raibert Heuristic 参数
+        raibert_stance_width = 0.3  # 站立宽度 [m]
+        raibert_stance_length = 0.30  # 站立长度 [m]
+        gait_frequency = 2.0 # 步态频率 [Hz]
+        
+        # Contact Schedule 步态参数
+        gait_phase = 0.5  # 步态相位
+        gait_offset = 0.0  # 步态偏移
+        gait_bound = 0.0  # 步态边界
+        gait_duration = 0.5  # 支撑相持续时间（占步态周期的比例）
+        kappa_gait_probs = 1e-5  # 接触状态平滑系数
 
 class A1RoughCfgPPO( LeggedRobotCfgPPO ):
     class algorithm( LeggedRobotCfgPPO.algorithm ):
@@ -122,10 +179,10 @@ class A1RoughCfgPPO( LeggedRobotCfgPPO ):
     class runner( LeggedRobotCfgPPO.runner ):
         run_name = ''
         experiment_name = 'rough_a1'
-
+        max_iterations = 5000 # number of policy updates
         resume = False
-        save_interval = 100
-        load_run="/home/guo/STU/HIMLoco/legged_gym/logs/rough_a1/Jan31_11-29-00_"
-        
+        save_interval = 200
+        load_run="/home/guo/STU/HIMLoco/legged_gym/logs/rough_a1/Apr30_21-53-03_"
+        checkpoint = -1
 
   

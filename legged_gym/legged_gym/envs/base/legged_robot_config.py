@@ -71,13 +71,28 @@ class LeggedRobotCfg(BaseConfig):
         curriculum = True
         max_curriculum = 3.0
         num_commands = 4 # default: lin_vel_x, lin_vel_y, ang_vel_yaw, heading (in heading mode ang_vel_yaw is recomputed from heading error)
-        resampling_time = 10. # time before command are changed[s]
         heading_command = True # if true: compute ang vel command from heading error
+        
+        command_curriculum = False
+        curriculum_seed = 100
+        num_lin_vel_bins = 21
+        num_y_vel_bins = 1
+        num_yaw_vel_bins = 21
+        resampling_time = 10. # time before command are changed[s]
+        limit_lin_vel_x = [-1.0, 1.0]
+        limit_lin_vel_y = [-1.0, 1.0]
+        limit_ang_vel_yaw = [-3.14, 3.14]
+        local_range = 0.5
+        
         class ranges:
             lin_vel_x = [-1.0, 1.0] # min max [m/s]
             lin_vel_y = [-1.0, 1.0]   # min max [m/s]
             ang_vel_yaw = [-3.14, 3.14]    # min max [rad/s]
             heading = [-3.14, 3.14]
+
+    class curriculum_thresholds:
+        tracking_lin_vel = 0.8
+        tracking_ang_vel = 0.5
 
     class init_state:
         pos = [0.0, 0.0, 1.] # x,y,z [m]
@@ -159,6 +174,9 @@ class LeggedRobotCfg(BaseConfig):
 
         delay = True
 
+        # TODO 控制器延迟
+        randomize_lag_timesteps = False
+        lag_timesteps = 6
     class rewards:
         class scales:
             termination = -0.0
@@ -177,7 +195,16 @@ class LeggedRobotCfg(BaseConfig):
             action_rate = -0.01
             stand_still = -0.
 
+            tracking_contacts_shaped_force = -0.
+            tracking_contacts_shaped_vel = -0.
+            raibert_heuristic = -0.
+            
+
         only_positive_rewards = True # if true negative total rewards are clipped at zero (avoids early termination problems)
+        selective_reward_decay = False
+        selective_reward_decay_task_names = ["tracking_lin_vel", "tracking_ang_vel"]
+        selective_reward_decay_aux_names = []
+        selective_reward_decay_aux_scale = 1.0
         tracking_sigma = 0.25 # tracking reward = exp(-error^2/sigma)
         soft_dof_pos_limit = 1. # percentage of urdf limits, values above this limit are penalized
         soft_dof_vel_limit = 1.
@@ -185,6 +212,22 @@ class LeggedRobotCfg(BaseConfig):
         base_height_target = 1.
         max_contact_force = 100. # forces above this value are penalized
         clearance_height_target = 0.09
+        
+        # Contact Schedule 参数
+        gait_force_sigma = 50.0  # 接触力跟踪 sigma
+        gait_vel_sigma = 0.5  # 速度跟踪 sigma
+        
+        # Raibert Heuristic 参数
+        raibert_stance_width = 0.3  # 站立宽度 [m]
+        raibert_stance_length = 0.45  # 站立长度 [m]
+        gait_frequency = 2.0  # 步态频率 [Hz
+        
+        # Contact Schedule 步态参数
+        gait_phase = 0.5  # 步态相位）
+        gait_offset = 0.0  # 步态偏移
+        gait_bound = 0.0  # 步态边界
+        gait_duration = 0.5  # 支撑相持续时间（占步态周期的比例）
+        kappa_gait_probs = 0.05  # 接触状态平滑系数
 
     class normalization:
         class obs_scales:
